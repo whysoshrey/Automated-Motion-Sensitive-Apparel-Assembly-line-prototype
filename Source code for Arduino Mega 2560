@@ -1,0 +1,161 @@
+// Pin Definitions
+const int motorENAPin = 2;
+const int motorIN1Pin = 6;
+const int motorIN2Pin = 7;
+const int motorENBPin = 3;
+const int motorIN3Pin = 8;
+const int motorIN4Pin = 9;
+const int irModulePin = 11;
+
+// Motor A Variables
+bool isMotorARunning = false;
+int motorASpeed = 0;
+const int motorAMinSpeed = 50;
+const int motorAMaxSpeed = 255;
+const int motorAStopDelay = 500; // Delay in milliseconds for smooth stop
+
+// Motor B Variables
+bool isMotorBRunning = false;
+int motorBSpeed = 255;
+
+// Ultrasonic Sensor Variables
+const int trigPin = 12;
+const int echoPin = 13;
+
+// IR Module Variables
+bool isObjectDetected = false;
+
+void setup() {
+  // Initialize motor pins as OUTPUT
+  pinMode(motorENAPin, OUTPUT);
+  pinMode(motorIN1Pin, OUTPUT);
+  pinMode(motorIN2Pin, OUTPUT);
+  pinMode(motorENBPin, OUTPUT);
+  pinMode(motorIN3Pin, OUTPUT);
+  pinMode(motorIN4Pin, OUTPUT);
+
+  // Initialize IR module pin as INPUT
+  pinMode(irModulePin, INPUT);
+
+  // Initialize Serial communication
+  Serial.begin(9600);
+}
+
+void loop() {
+  // Phase 1: Motor B Starts Running
+  if (!isMotorBRunning) {
+    startMotorB();
+    isMotorBRunning = true;
+  }
+
+  // Phase 2: Ultrasonic Sensor Detects Object
+  if (isMotorBRunning && isObjectDetected) {
+    stopMotorB();
+    delay(100); // Delay for stability
+
+    // Phase 3: Motor A Starts Running
+    if (!isMotorARunning) {
+      startMotorA();
+      isMotorARunning = true;
+    }
+
+    // Phase 4: IR Module Detects Object
+    if (isMotorARunning && isObjectDetected) {
+      smoothStopMotorA();
+      isMotorARunning = false;
+    }
+  }
+
+  // Reset the process for the next cycle
+  if (!isMotorARunning && !isMotorBRunning) {
+    resetProcess();
+  }
+}
+
+void startMotorA() {
+  // Motor A forward at maximum speed
+  digitalWrite(motorIN1Pin, HIGH);
+  digitalWrite(motorIN2Pin, LOW);
+  analogWrite(motorENAPin, motorAMaxSpeed);
+}
+
+void stopMotorA() {
+  // Stop Motor A
+  analogWrite(motorENAPin, 0);
+}
+
+void smoothStopMotorA() {
+  // Smoothly stop Motor A
+  for (int speed = motorASpeed; speed >= 0; speed--) {
+    analogWrite(motorENAPin, speed);
+    delay(5);
+  }
+  delay(motorAStopDelay);
+  stopMotorA();
+}
+
+void startMotorB() {
+  // Motor B forward at maximum speed
+  digitalWrite(motorIN3Pin, HIGH);
+  digitalWrite(motorIN4Pin, LOW);
+  analogWrite(motorENBPin, motorBSpeed);
+}
+
+void stopMotorB() {
+  // Stop Motor B
+  analogWrite(motorENBPin, 0);
+}
+
+void resetProcess() {
+  // Reset process for the next cycle
+  isMotorARunning = false;
+  isMotorBRunning = false;
+  isObjectDetected = false;
+  motorASpeed = 0;
+  startMotorB(); // Restart Motor B
+}
+
+void updateMotorASpeed() {
+  // Update Motor A speed based on IR module input
+  int irValue = digitalRead(irModulePin);
+  if (irValue == HIGH) {
+    motorASpeed = motorAMinSpeed;
+  } else {
+    motorASpeed = map(analogRead(A0), 0, 1023, motorAMinSpeed, motorAMaxSpeed);
+  }
+}
+
+void updateObjectDetection() {
+  // Update object detection status based on Ultrasonic sensor input
+  long duration, distance;
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = (duration / 2) / 29.1;
+
+  if (distance >= 0 && distance <= 10) {
+    isObjectDetected = true;
+  } else {
+    isObjectDetected = false;
+  }
+}
+
+void serialPrintValues() {
+  // Print debug information
+  Serial.print("Motor A Speed: ");
+  Serial.print(motorASpeed);
+  Serial.print(" | Object Detected: ");
+  Serial.println(isObjectDetected);
+}
+
+void serialEvent() {
+  // Update motor speed and object detection on Serial input
+  while (Serial.available()) {
+    updateMotorASpeed();
+    updateObjectDetection();
+    serialPrintValues();
+  }
+}
